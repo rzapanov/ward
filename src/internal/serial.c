@@ -7,7 +7,9 @@
 ///
 /// Per test timeouts use SIGALRM here, so a test that installs its own
 /// SIGALRM handler disables its own timeout.
-#include <errno.h>
+#if __has_include(<execinfo.h>)
+#include <execinfo.h>
+#endif
 #include <limits.h>
 #include <setjmp.h>
 #include <signal.h>
@@ -88,6 +90,22 @@ static void report_fatal_signal(int number) {
         write_all(fd, current.test->full_name.text, current.test->full_name.length);
     }
     write_str(fd, "'\n");
+
+#if __has_include(<execinfo.h>)
+    // glibc-only: musl has no execinfo.h, so the guard keeps the build green.
+    // backtrace() walks the frame-pointer chain (hence -fno-omit-frame-pointer);
+    // backtrace_symbols_fd() writes straight to the fd. Not strictly
+    // async-signal-safe (libunwind may allocate), acceptable here: the process
+    // is dying and about to _exit.
+    void *frames[32];
+    int depth = backtrace(frames, (int) WARD_LENGTHOF(frames));
+    if (depth > 1) {
+        // Skip frame 0 (this function) and frame 1 (on_fatal_signal): both are
+        // ward internals, not useful to the reader.
+        write_str(fd, "ward: backtrace:\n");
+        backtrace_symbols_fd(frames + 2, depth - 2, fd);
+    }
+#endif
 }
 
 static void on_fatal_signal(int number) {

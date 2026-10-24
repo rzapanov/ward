@@ -39,7 +39,7 @@
 #define WARD_TEST_NOTHING()
 
 #define WARD_TEST_(ward_g, ward_n, ...)                                                      \
-    WARD_TEST_PROTO(ward_g, ward_n);                                                         \
+    WARD_TEST_DECL(ward_g, ward_n);                                                           \
     WARD_ATTR(used) WARD_SECTION("ward_test_desc") WARD_ATTR(aligned(sizeof(void *)))         \
     static const struct WardTestDesc WARD_TEST_SYM(ward_g, ward_n, desc) =                     \
         WARD_VA_EXPAND(WARD_CONS_STRUCT(                                                       \
@@ -52,8 +52,17 @@
         ));                                                                                    \
     WARD_TEST_PROTO(ward_g, ward_n)
 
-#define WARD_TEST_PROTO(ward_g, ward_n) static void WARD_TEST_SYM(ward_g, ward_n, fn)(void)
+/// The test function is emitted with external linkage and an assembler label of
+/// `ward_<group>_<name>` so its symbol survives in the dynamic symbol table and a
+/// crash backtrace (`backtrace_symbols_fd`) can name the frame. `used` keeps the
+/// compiler from dropping it. The label is set on the declaration only; the
+/// definition below inherits it.
+#define WARD_TEST_DECL(ward_g, ward_n)                                                        \
+    WARD_ATTR(used) void WARD_TEST_SYM(ward_g, ward_n, fn)(void)                              \
+        __asm__(WARD_TEST_SYMNAME(ward_g, ward_n))
+#define WARD_TEST_PROTO(ward_g, ward_n) void WARD_TEST_SYM(ward_g, ward_n, fn)(void)
 #define WARD_TEST_SYM(ward_g, ward_n, suffix) ward_test_##ward_g##_##ward_n##_##suffix
+#define WARD_TEST_SYMNAME(ward_g, ward_n) "ward_" #ward_g "_" #ward_n
 
 /// Declares suite level setup/teardown. Optional: a suite with no-op init and
 /// fini is created implicitly for any `Test(group, ...)` that has no

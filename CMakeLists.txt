@@ -11,6 +11,9 @@ include(cmake/wardHelpers.cmake)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Export compile_commands.json so clangd (and friends) see the real flags.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 option(WARD_BUILD_TESTS "Build the ward self tests" ${PROJECT_IS_TOP_LEVEL})
 option(WARD_ENABLE_IPO "Enable interprocedural optimization for ward" OFF)
 
@@ -52,6 +55,7 @@ set_target_properties(ward PROPERTIES
 target_compile_options(ward PRIVATE
     -Wall -Wextra -Wshadow -Wstrict-prototypes -Wmissing-prototypes
     -Wpointer-arith -Wwrite-strings -Wformat=2 -Wconversion -Wsign-conversion
+    -fno-omit-frame-pointer
 )
 
 if(WARD_BUILD_TESTS)

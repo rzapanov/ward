@@ -1,6 +1,8 @@
 add_executable(ward_self_tests basic_test.c)
 target_link_libraries(ward_self_tests PRIVATE ward::ward)
-target_compile_options(ward_self_tests PRIVATE -Wall -Wextra -Wshadow)
+target_compile_options(ward_self_tests PRIVATE -Wall -Wextra -Wshadow -fno-omit-frame-pointer)
+# Export the dynamic symbol table so a crash backtrace can name test frames.
+set_target_properties(ward_self_tests PROPERTIES ENABLE_EXPORTS ON)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/wardHelpers.cmake)
 
@@ -26,8 +28,8 @@ add_test(NAME ward:negative
 
 add_executable(ward_negative_tests negative/negative_test.c)
 target_link_libraries(ward_negative_tests PRIVATE ward::ward)
-target_compile_options(ward_negative_tests PRIVATE -Wall -Wextra)
-set_target_properties(ward_negative_tests PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_compile_options(ward_negative_tests PRIVATE -Wall -Wextra -fno-omit-frame-pointer)
+set_target_properties(ward_negative_tests PROPERTIES EXCLUDE_FROM_ALL FALSE ENABLE_EXPORTS ON)
 
 # The framework must work when tests live in a static library that nothing else
 # references: that is the case where a plain link silently drops every test.
@@ -36,6 +38,8 @@ target_link_libraries(ward_lib_tests PUBLIC ward::ward)
 
 add_executable(ward_lib_tests_runner lib_tests/main.c)
 target_link_libraries(ward_lib_tests_runner PRIVATE ward_lib_tests)
+target_compile_options(ward_lib_tests_runner PRIVATE -fno-omit-frame-pointer)
+set_target_properties(ward_lib_tests_runner PROPERTIES ENABLE_EXPORTS ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_link_options(ward_lib_tests_runner PRIVATE
         "LINKER:--whole-archive,$<TARGET_FILE:ward_lib_tests>,--no-whole-archive")
