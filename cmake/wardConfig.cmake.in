@@ -1,0 +1,6 @@
+@IN_PACKAGE_DIR@
+
+include(CMakeFindDependencyMacro)
+
+include("${CMAKE_CURRENT_LIST_DIR}/wardTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/wardHelpers.cmake")
