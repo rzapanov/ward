@@ -4,14 +4,36 @@ A small unit test framework for C23 on Linux. Tests are collected at link time
 from an ELF section, each case runs in its own process, and the library provides
 `main()`, so a test binary is nothing but test definitions.
 
+## Quickstart
+
+A test file is all you write — the library provides `main()`:
+
 ```c
+// test/math_test.c
 #include <ward/ward.h>
 
-TestSuite(db, .init = &setup, .fini = &teardown);
-
-Test(db, add_and_query) {
-    ward_assert_eq(2 + 2, 4);
+Test(math, add) {
+    ward_assert_eq(1 + 1, 2);
 }
+
+Test(math, close_enough) {
+    ward_assert_close(0.1 + 0.2, 0.3, 1e-9);
+}
+```
+
+```sh
+# build the library (once)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build -j
+
+# link and run your test
+cc -std=c23 -Iinclude test/math_test.c build/lib/libward.a -o math_tests
+./math_tests
+```
+
+```
+[PASS] math:add
+[PASS] math:close_enough
+TOTAL: 2, PASS: 2, FAIL: 0, CRASH: 0, TIMEOUT: 0, SKIP: 0
 ```
 
 ## Features
@@ -28,6 +50,14 @@ Test(db, add_and_query) {
   works with gdb, rr, sanitizers and valgrind.
 - **Reproducer lines**: every failure prints a copy-paste command that reruns
   just that case.
+- **Float tolerance**: `ward_assert_close(a, b, eps)` for floating-point
+  comparisons.
+- **Runtime skip**: `ward_skip("reason")` abandons a case as SKIP when a
+  precondition is not met.
+- **Own your `main()`**: `ward_main(argc, argv)` for consumers that need custom
+  start-up.
+- **CMake helpers**: `ward_add_test_executable` wires sources, linking, and
+  CTest in one call.
 
 ## Build and run
 

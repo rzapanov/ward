@@ -123,7 +123,5 @@ through weak symbols, so a binary with zero tests still links.
 
 Read [IMPROVEMENTS.md](IMPROVEMENTS.md) before adding features — it is the
 reviewed backlog, sorted by impact, and it already lists what is done. Notable
-holes today: no `ward_main()` for consumers that own `main()`, no float
-tolerance assertion, no runtime `ward_skip()`, no per-case CTest registration, no
-`--repeat`/`--shuffle`, no per-case temp dir, no macOS/BSD runner (falls back to
-serial), `--single` timeouts rely on `SIGALRM`.
+holes today: no `--repeat`/`--shuffle`, no per-case temp dir, no macOS/BSD runner
+(falls back to serial), `--single` timeouts rely on `SIGALRM`.

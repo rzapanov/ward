@@ -27,8 +27,9 @@ cc -std=c23 -I<path>/include test.c <path>/libward.a -o test
 Nothing else to add: no pthreads, no `--whole-archive` for ward itself, no
 linker script.
 
-**One rule**: never write your own `main()`. If you need custom start-up, see
-[IMPROVEMENTS.md](IMPROVEMENTS.md) — a `ward_main()` entry point is planned.
+**One rule**: never write your own `main()`. If you need custom start-up, call
+`ward_main(argc, argv)` from your own `main()` — it runs the full runner with
+the same command-line options and returns the exit status.
 
 ## 2. Writing tests
 
@@ -82,10 +83,15 @@ failure.
 | `ward_assert_not(cond)` | `cond` is true |
 | `ward_assert_eq(a, b)` | `a` and `b` differ |
 | `ward_assert_not_eq(a, b)` | `a` and `b` are equal |
+| `ward_assert_close(a, b, eps)` | `|a - b| > eps` (floating-point tolerance) |
 | `ward_assert_str_eq(a, b)` | text of `a` and `b` differs |
 | `ward_assert_null(p)` | `p` is not null |
 | `ward_assert_not_null(p)` | `p` is null |
 | `ward_fail("fmt %s", x)` | always, with your message |
+
+`ward_skip("reason")` abandons the current case as `SKIP` without failing it —
+use it when a precondition is not met (missing environment variable, optional
+dependency absent). It never returns.
 
 `ward_assert_eq` compares by value for integers, floats, `WardStr` and C
 strings, and by identity for other pointers:
@@ -113,6 +119,7 @@ cannot collide with a host project's own string helpers.
 --jobs=<n>            Number of parallel test processes (0 = all cpus)
 --timeout=<seconds>   Per test time limit, default 30
 --fail-fast           Stop scheduling after the first failure
+--break-on-failure    Raise SIGTRAP after the first failure (for gdb)
 --print-repr          Print a copy-paste command for every failure (default on)
 --no-print-repr       Do not print reproducer commands
 --no-color            Disable colored status labels
@@ -185,6 +192,34 @@ deadline — the parallel runner does not have that weakness, which is why it is
 the default.
 
 ## 6. CMake integration
+
+### Shortcut: CMake helpers
+
+The package ships two CMake functions (in `cmake/wardHelpers.cmake`, included
+automatically by the `ward::ward` package):
+
+```cmake
+ward_add_test_executable(mytests
+    SOURCES test/stack_test.c test/db_test.c
+    LIBS    my_core
+    TIMEOUT 300
+)
+```
+
+This creates `mytests_lib` (holding the test sources), `mytests` (the
+executable linked against `ward::ward`), and a CTest entry. It handles
+`--whole-archive` for you. Add `OBJECT` to use an object library instead of
+static (avoids the `--whole-archive` requirement entirely).
+
+For one CTest entry per test case (CI dashboards that need to show *which*
+case failed):
+
+```cmake
+ward_add_per_case_tests(mytests TIMEOUT 60)
+```
+
+This requires a two-step configure: build once to generate the test list, then
+re-configure to register the per-case entries.
 
 ### Option A: `add_subdirectory`
 
