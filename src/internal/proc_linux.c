@@ -270,6 +270,7 @@ static void spawn_into_slot(struct Loop *loop, struct Slot *slot, struct WardCas
 
     size_t index = (size_t) (test - runner->cases);
     struct OutputBuffer *output = &loop->outputs[index];
+    output->bytes = NULL;
     output->size = 0;
     output->truncated = false;
 
