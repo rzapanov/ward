@@ -160,12 +160,13 @@ Environment: `NO_COLOR=1` disables color, `WARD_NO_FORK=1` forces `--single`
 ## 5. Debugging a failing test
 
 On Linux, assertion failures and fatal signals print a bounded backtrace with
-raw PCs and cached module-relative addresses. If `addr2line` is on `PATH`, a
-pre-spawned helper attempts to add function names, source lines, and inline
+numbered frames. If `addr2line` is on `PATH`, a pre-spawned helper attempts to add
+function names, source lines, and inline
 frames. Build your test code with `-g` for source lines. No debugger or extra
 library dependency is required; missing debug information, a missing/failed tool,
-or a stalled symbolizer leaves the raw trace available. Symbolization has a
-1.5-second total budget, and waiting for the helper is bounded to two seconds.
+or a stalled symbolizer falls back to raw PCs and cached module-relative
+addresses. Symbolization has a 1.5-second total budget, and waiting for the helper
+is bounded to two seconds.
 
 Fatal-signal capture uses the saved PC and a bounded frame-pointer walk on Linux
 x86-64/AArch64. Compile test code with `-fno-omit-frame-pointer` for more frames.

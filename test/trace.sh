@@ -11,7 +11,7 @@ run_failure() {
     "$binary" --no-color "$@" > "$work/out" 2>&1 || status=$?
     test "$status" -eq 1
     grep -q 'ward: backtrace' "$work/out"
-    grep -Eq '^0x[0-9a-f]|fault registers unavailable' "$work/out"
+    grep -Eq '^  #[0-9]|fault registers unavailable' "$work/out"
 }
 
 run_failure --exact=negative:assertion_fails
@@ -32,7 +32,7 @@ status=0
 PATH="$original_path"
 export PATH
 test "$status" -eq 1
-grep -q '^0x[0-9a-f]' "$work/out"
+grep -q '^  #[0-9].*0x[0-9a-f]' "$work/out"
 grep -q 'source symbolization unavailable' "$work/out"
 
 if command -v strip >/dev/null 2>&1; then
@@ -41,7 +41,7 @@ if command -v strip >/dev/null 2>&1; then
     status=0
     "$work/stripped" --no-color --exact=negative:assertion_fails > "$work/out" 2>&1 || status=$?
     test "$status" -eq 1
-    grep -q '^0x[0-9a-f]' "$work/out"
+    grep -q '^  #[0-9]' "$work/out"
     grep -q '\[FAIL\]' "$work/out"
 fi
 
@@ -50,6 +50,23 @@ printf '#!/bin/sh\nexit 1\n' > "$work/tools/addr2line"
 chmod +x "$work/tools/addr2line"
 PATH="$work/tools:$original_path" run_failure --exact=negative:assertion_fails
 grep -q 'source symbolization unavailable' "$work/out"
+
+# Resolved frames are a single numbered line, with explicit inline callers.
+printf '#!/bin/sh\nprintf "leaf\\ninline.c:7\\ncaller\\ncaller.c:9\\n"\n' > "$work/tools/addr2line"
+chmod +x "$work/tools/addr2line"
+PATH="$work/tools:$original_path" run_failure --exact=negative:assertion_fails
+grep -q '^  #0  leaf at inline.c:7$' "$work/out"
+grep -q '^       inlined by caller at caller.c:9$' "$work/out"
+test "$(grep -c '^  #0 ' "$work/out")" -eq 1
+if grep -q '^0x\|^leaf$\|^caller$' "$work/out"; then
+    echo 'unexpected unformatted/duplicate trace output' >&2
+    exit 1
+fi
+
+# A reporter that dies before completing must leave an emergency raw trace.
+printf '#!/bin/sh\nkill -KILL "$PPID"\nexit 1\n' > "$work/tools/addr2line"
+PATH="$work/tools:$original_path" run_failure --exact=negative:assertion_fails
+grep -q '^  #0 .*0x' "$work/out"
 
 # A stuck tool must not hang --exact, which has no supervising runner process.
 printf '#!/bin/sh\nexec /bin/sleep 30\n' > "$work/tools/addr2line"

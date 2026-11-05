@@ -50,6 +50,7 @@ static int trace_fd = -1;
 // Keep a reader open until capture ends, so a dead helper cannot cause SIGPIPE.
 static int trace_guard = -1;
 static pid_t reporter = -1;
+static bool reporter_succeeded;
 static atomic_flag reporting = ATOMIC_FLAG_INIT;
 _Static_assert(sizeof(struct Trace) <= 4096, "trace must fit Linux PIPE_BUF");
 
@@ -113,11 +114,12 @@ static void raw_hex(uintptr_t value) {
     (void) write(STDERR_FILENO, buffer, sizeof(buffer));
 }
 
-static void submit_trace(void) {
-    // Always emit the useful fallback first, even if spawning/symbolization fails.
-    static char const heading[] = "ward: backtrace (raw PCs; source lines if available):\n";
-    (void) write(STDERR_FILENO, heading, sizeof(heading) - 1);
+static void raw_trace(void) {
     for (unsigned i = 0; i < trace.count; i++) {
+        char label[] = "  #0  ";
+        label[3] = (char) ('0' + (i < 10 ? i : i / 10));
+        if (i >= 10) label[4] = (char) ('0' + i % 10);
+        (void) write(STDERR_FILENO, label, sizeof(label) - 1);
         raw_hex(trace.frames[i].pc);
         char const *module = trace.frames[i].module;
         size_t length = 0;
@@ -134,12 +136,22 @@ static void submit_trace(void) {
         static char const unavailable[] = "  fault registers unavailable on this architecture\n";
         (void) write(STDERR_FILENO, unavailable, sizeof(unavailable) - 1);
     }
+}
+
+static void submit_trace(void) {
+    static char const heading[] = "ward: backtrace:\n";
+    (void) write(STDERR_FILENO, heading, sizeof(heading) - 1);
+    bool sent = false;
     if (trace_fd >= 0) {
         ssize_t n;
         do {
             n = write(trace_fd, &trace, sizeof(trace));
         } while (n < 0 && errno == EINTR);
+        sent = n == (ssize_t) sizeof(trace);
     }
+    ward_trace_stop();
+    // A failed or killed helper must not suppress the emergency trace.
+    if (!sent || !reporter_succeeded) raw_trace();
 }
 
 void ward_trace_start(void) {
@@ -164,13 +176,19 @@ void ward_trace_start(void) {
 }
 
 void ward_trace_stop(void) {
+    reporter_succeeded = false;
     if (trace_fd >= 0) { close(trace_fd); trace_fd = -1; }
     if (trace_guard >= 0) { close(trace_guard); trace_guard = -1; }
     if (reporter > 0) {
         long long deadline = now_ms() + 2000;
         for (;;) {
-            pid_t waited = waitpid(reporter, NULL, WNOHANG);
-            if (waited == reporter || (waited < 0 && errno != EINTR)) break;
+            int status = 0;
+            pid_t waited = waitpid(reporter, &status, WNOHANG);
+            if (waited == reporter) {
+                reporter_succeeded = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+                break;
+            }
+            if (waited < 0 && errno != EINTR) break;
             if (now_ms() >= deadline) {
                 (void) kill(reporter, SIGKILL);
                 while (waitpid(reporter, NULL, 0) < 0 && errno == EINTR) {}
@@ -193,7 +211,6 @@ void ward_trace_assertion(void) {
 #endif
     if (!trace.count) add_frame((uintptr_t) __builtin_return_address(0), true);
     submit_trace();
-    ward_trace_stop();
 }
 
 void ward_trace_signal(void *context) {
@@ -231,11 +248,10 @@ void ward_trace_signal(void *context) {
         fp = pair[0];
     }
     submit_trace();
-    ward_trace_stop();
 }
 
 // One deadline for the entire trace; even a broken addr2line cannot hang --exact.
-static bool symbolize(struct TraceFrame const *frame, long long deadline) {
+static bool symbolize(struct TraceFrame const *frame, unsigned index, long long deadline) {
     if (!frame->module[0] || now_ms() >= deadline) return false;
     int pipes[2];
     if (pipe2(pipes, O_CLOEXEC | O_NONBLOCK) != 0) return false;
@@ -292,8 +308,30 @@ static bool symbolize(struct TraceFrame const *frame, long long deadline) {
     if (!finished || !WIFEXITED(status) || WEXITSTATUS(status) != 0 || !used) return false;
     output[used] = '\0';
     if (strcmp(output, "??\n??:0\n") == 0 || strcmp(output, "??\n??:?\n") == 0) return false;
-    fprintf(stderr, "  %s+%s\n%s", frame->module, address, output);
-    return true;
+    // addr2line -f -i emits function/location pairs, innermost inline frame first.
+    unsigned lines = 0;
+    for (size_t i = 0; i < used; i++) lines += output[i] == '\n';
+    if (output[used - 1] != '\n' || lines % 2 != 0) return false;
+    char *cursor = output;
+    bool printed = false;
+    while (*cursor) {
+        char *function = cursor;
+        char *end = strchr(cursor, '\n');
+        *end = '\0';
+        char *location = end + 1;
+        end = strchr(location, '\n');
+        *end = '\0';
+        cursor = end + 1;
+        if (strcmp(function, "??") == 0 && strncmp(location, "??:", 3) == 0) continue;
+        if (printed) fputs("       inlined by ", stderr);
+        else fprintf(stderr, "  #%-2u ", index);
+        fputs(strcmp(function, "??") == 0 ? "<unknown>" : function, stderr);
+        if (strncmp(location, "??:", 3) != 0) fprintf(stderr, " at %s", location);
+        else fprintf(stderr, " (%s+%s)", frame->module, address);
+        fputc('\n', stderr);
+        printed = true;
+    }
+    return printed;
 }
 
 int ward_trace_helper(void) {
@@ -302,7 +340,7 @@ int ward_trace_helper(void) {
     while (used < sizeof(packet)) {
         ssize_t n = read(STDIN_FILENO, (char *) &packet + used, sizeof(packet) - used);
         if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) return 0;
+        if (n <= 0) return 1;
         used += (size_t) n;
     }
     if (packet.count > TRACE_DEPTH) return 1;
@@ -310,14 +348,24 @@ int ward_trace_helper(void) {
     bool resolved = false;
     for (unsigned i = 0; i < packet.count; i++) {
         packet.frames[i].module[TRACE_PATH - 1] = '\0';
-        resolved |= symbolize(&packet.frames[i], deadline);
+        struct TraceFrame const *f = &packet.frames[i];
+        if (symbolize(f, i, deadline)) {
+            resolved = true;
+        } else {
+            fprintf(stderr, "  #%-2u 0x%lx", i, (unsigned long) f->pc);
+            if (f->module[0]) fprintf(stderr, " (%s+0x%lx)", f->module,
+                                      (unsigned long) f->address);
+            fputc('\n', stderr);
+        }
     }
-    if (!resolved) fputs("ward: source symbolization unavailable; use raw PCs above\n", stderr);
+    if (!packet.count) fputs("  fault registers unavailable on this architecture\n", stderr);
+    else if (!resolved) fputs("  (source symbolization unavailable)\n", stderr);
     return 0;
 }
 #else
 void ward_trace_start(void) {}
-void ward_trace_stop(void) {}
+void ward_trace_stop(void) {
+    reporter_succeeded = false;}
 void ward_trace_assertion(void) {}
 void ward_trace_signal(void *context) { (void) context; }
 int ward_trace_helper(void) { return 0; }
