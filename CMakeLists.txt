@@ -19,12 +19,14 @@ option(WARD_ENABLE_IPO "Enable interprocedural optimization for ward" OFF)
 
 add_library(ward STATIC)
 add_library(ward::ward ALIAS ward)
+target_link_libraries(ward PRIVATE ${CMAKE_DL_LIBS})
 
 target_sources(ward PRIVATE
     src/internal/discover.c
     src/internal/options.c
     src/internal/proc.c
     src/internal/report.c
+    src/internal/trace.c
     src/internal/serial.c
     src/internal/ward.c
     src/support/arena.c

@@ -119,6 +119,13 @@ void ward_report_output(struct WardRunner *runner, char const *bytes, size_t siz
 void ward_report_reproducer(struct WardRunner *runner, struct WardCase *test);
 void ward_report_summary(struct WardRunner *runner);
 
+// trace.c: optional out-of-process symbolization, never from a signal handler.
+void ward_trace_start(void);
+void ward_trace_stop(void);
+void ward_trace_assertion(void);
+void ward_trace_signal(void *context);
+int ward_trace_helper(void);
+
 // serial.c
 int ward_run_serial(struct WardRunner *runner);
 

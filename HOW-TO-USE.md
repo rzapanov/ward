@@ -159,6 +159,23 @@ Environment: `NO_COLOR=1` disables color, `WARD_NO_FORK=1` forces `--single`
 
 ## 5. Debugging a failing test
 
+On Linux, assertion failures and fatal signals print a bounded backtrace with
+raw PCs and cached module-relative addresses. If `addr2line` is on `PATH`, a
+pre-spawned helper attempts to add function names, source lines, and inline
+frames. Build your test code with `-g` for source lines. No debugger or extra
+library dependency is required; missing debug information, a missing/failed tool,
+or a stalled symbolizer leaves the raw trace available. Symbolization has a
+1.5-second total budget, and waiting for the helper is bounded to two seconds.
+
+Fatal-signal capture uses the saved PC and a bounded frame-pointer walk on Linux
+x86-64/AArch64. Compile test code with `-fno-omit-frame-pointer` for more frames.
+Unreadable/corrupt stacks, omitted frames, or restrictions on `process_vm_readv`
+can shorten the trace to the fault PC. Modules loaded after the case starts may
+have only raw addresses. Other architectures currently report that fault
+register capture is unavailable. The signal handler uses an alternate stack and
+does not call the libc unwinder or `addr2line`. If output exceeds the capture
+limit, the runner preserves its beginning and end so late diagnostics survive.
+
 Every failure prints a reproducer line. Copy it: it runs that one case **in the
 current process**, with no fork, no pipes and no output buffering.
 

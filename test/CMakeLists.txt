@@ -53,6 +53,12 @@ add_test(NAME ward:fuzz
                  20)
 set_tests_properties(ward:fuzz PROPERTIES TIMEOUT 600)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(NAME ward:trace COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/trace.sh
+        $<TARGET_FILE:ward_negative_tests> $<IF:$<CONFIG:Debug>,ON,OFF> ${WARD_HAS_PIDFD})
+    set_tests_properties(ward:trace PROPERTIES TIMEOUT 20)
+endif()
+
 # Per-case ctest entries: one add_test per case, generated at build time.
 # Requires a second configure after building (see ward_add_per_case_tests docs).
 ward_add_per_case_tests(ward_self_tests)

@@ -74,6 +74,7 @@ static void print_value(WardValue value) {
 /// to unwind to, so the child exits with a non-zero status and the parent
 /// records the failure.
 static _Noreturn void abandon_case(void) {
+    ward_trace_assertion();
     fflush(stdout);
     fflush(stderr);
     sigjmp_buf *target = ward_current_target();
@@ -156,6 +157,9 @@ static void print_test_list(struct WardRunner *runner) {
 }
 
 int ward_main(int argc, char *argv[]) {
+    if (argc == 2 && strcmp(argv[1], "--_ward-symbolizer") == 0) {
+        return ward_trace_helper();
+    }
     struct WardRunner runner = {0};
 
     int parsed = ward_options_parse(&runner, argc, argv);

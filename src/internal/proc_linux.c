@@ -118,17 +118,27 @@ static void epoll_drop(int epfd, int fd) {
 }
 
 static void output_append(struct OutputBuffer *buffer, char const *bytes, size_t size) {
+    if (size == 0) return;
     size_t left = WARD_MAX_OUTPUT_SIZE - buffer->size;
-    if (size > left) {
-        size = left;
-        buffer->truncated = true;
+    size_t append = size < left ? size : left;
+    if (append) {
+        buffer->bytes = ward_realloc(buffer->bytes, buffer->size + append);
+        memcpy(buffer->bytes + buffer->size, bytes, append);
+        buffer->size += append;
+        bytes += append;
+        size -= append;
     }
-    if (size == 0) {
-        return;
+    if (!size) return;
+    buffer->truncated = true;
+    // Keep early context and a rolling suffix containing late crash diagnostics.
+    size_t head = WARD_MAX_OUTPUT_SIZE / 2;
+    size_t tail = WARD_MAX_OUTPUT_SIZE - head;
+    if (size >= tail) {
+        memcpy(buffer->bytes + head, bytes + size - tail, tail);
+    } else {
+        memmove(buffer->bytes + head, buffer->bytes + head + size, tail - size);
+        memcpy(buffer->bytes + WARD_MAX_OUTPUT_SIZE - size, bytes, size);
     }
-    buffer->bytes = ward_realloc(buffer->bytes, buffer->size + size);
-    memcpy(buffer->bytes + buffer->size, bytes, size);
-    buffer->size += size;
 }
 
 static void drain_pipe(struct Slot *slot) {
@@ -178,7 +188,7 @@ static void finish_slot(struct Loop *loop, struct Slot *slot, enum WardStatus st
     if (show_output && slot->output->truncated) {
         char note_buffer[96];
         int n = snprintf(note_buffer, sizeof(note_buffer),
-                         "(output truncated after %d bytes)", WARD_MAX_OUTPUT_SIZE);
+                         "(output truncated; kept first and last %d bytes)", WARD_MAX_OUTPUT_SIZE / 2);
         ward_report_output(runner, note_buffer, (size_t) (n > 0 ? n : 0));
     }
     switch (status) {
