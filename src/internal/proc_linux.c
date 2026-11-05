@@ -495,5 +495,5 @@ int ward_run_parallel(struct WardRunner *runner) {
     }
     free(loop.slots);
     close(loop.epfd);
-    return 0;
+    return runner->failed || runner->crashed || runner->timed_out ? 1 : 0;
 }

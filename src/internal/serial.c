@@ -271,5 +271,5 @@ int ward_run_serial(struct WardRunner *runner) {
             }
         }
     }
-    return 0;
+    return runner->failed || runner->crashed || runner->timed_out ? 1 : 0;
 }

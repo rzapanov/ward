@@ -127,6 +127,7 @@ void ward_trace_signal(void *context);
 int ward_trace_helper(void);
 
 // serial.c
+// Runner entry points return 1 if any case failed/crashed/timed out, otherwise 0.
 int ward_run_serial(struct WardRunner *runner);
 
 // proc.c / proc_linux.c

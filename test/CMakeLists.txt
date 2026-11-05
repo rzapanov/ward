@@ -1,3 +1,22 @@
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(CheckCSourceRuns)
+    check_c_source_runs("
+        #define _GNU_SOURCE
+        #include <sys/syscall.h>
+        #include <unistd.h>
+        int main(void) {
+            int fd = (int) syscall(SYS_pidfd_open, getpid(), 0);
+            if (fd < 0) return 1;
+            close(fd);
+            return 0;
+        }" WARD_HAS_PIDFD)
+endif()
+if(WARD_HAS_PIDFD)
+    set(WARD_HAS_PIDFD ON)
+else()
+    set(WARD_HAS_PIDFD OFF)
+endif()
+
 add_executable(ward_self_tests basic_test.c)
 target_link_libraries(ward_self_tests PRIVATE ward::ward)
 target_compile_options(ward_self_tests PRIVATE -Wall -Wextra -Wshadow -fno-omit-frame-pointer)
@@ -54,6 +73,14 @@ add_test(NAME ward:fuzz
 set_tests_properties(ward:fuzz PROPERTIES TIMEOUT 600)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(ward_executor_exit_tests negative/negative_test.c runner_exit.c)
+    target_include_directories(ward_executor_exit_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(ward_executor_exit_tests PRIVATE ward::ward)
+    target_link_options(ward_executor_exit_tests PRIVATE
+        "LINKER:--wrap=ward_run_serial,--wrap=ward_run_parallel")
+    add_test(NAME ward:exit_status COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/exit_status.sh
+        $<TARGET_FILE:ward_negative_tests> $<TARGET_FILE:ward_executor_exit_tests> ${WARD_HAS_PIDFD})
+    set_tests_properties(ward:exit_status PROPERTIES TIMEOUT 30)
     add_test(NAME ward:trace COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/trace.sh
         $<TARGET_FILE:ward_negative_tests> $<IF:$<CONFIG:Debug>,ON,OFF> ${WARD_HAS_PIDFD})
     set_tests_properties(ward:trace PROPERTIES TIMEOUT 20)

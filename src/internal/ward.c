@@ -222,17 +222,17 @@ int ward_main(int argc, char *argv[]) {
         return 2;
     }
 
+    int result;
     if (runner.options.mode == WARD_MODE_PARALLEL && ward_parallel_supported()) {
-        ward_run_parallel(&runner);
+        result = ward_run_parallel(&runner);
     } else {
-        ward_run_serial(&runner);
+        result = ward_run_serial(&runner);
     }
 
     ward_report_summary(&runner);
-    int failures = runner.failed + runner.crashed + runner.timed_out;
     ward_arena_free(&runner.arena);
     ward_map_free(&runner.suites);
-    return failures > 0 ? 1 : 0;
+    return result;
 }
 
 #ifndef WARD_NO_MAIN
